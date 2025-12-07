@@ -174,7 +174,7 @@ export const createLessonFromIntent = async (userVoicePrompt: string): Promise<L
         "target": "string (the word or phrase)",
         "description": "string (brief instruction on how to sign it)",
         "difficulty": "Beginner" | "Intermediate",
-        "prompt": "string (prompt for an image generator to show the sign. If it's a phrase, ask for a composite image or a sequence layout)"
+        "prompt": "string (prompt for an image generator. If it is a phrase/action, explicitly ask for 'motion lines', 'arrows showing movement', and 'infographic style'.)"
       }
     `;
 
@@ -189,12 +189,17 @@ export const createLessonFromIntent = async (userVoicePrompt: string): Promise<L
     const text = response.text || "{}";
     const data = JSON.parse(text);
     
+    // Fallback prompt generation if model returns empty prompt
+    const generatedPrompt = data.prompt || (data.target.length > 1 
+      ? `educational infographic illustration of hands signing "${data.target}" in ASL, showing motion lines and arrows for movement`
+      : `photorealistic hand signing ASL letter ${data.target}`);
+
     return {
       id: `dyn-${Date.now()}`,
       target: data.target || "Unknown",
       description: data.description || "Follow the hand sign shown.",
       difficulty: data.difficulty || "Beginner",
-      prompt: data.prompt || `photorealistic hand signing ${data.target}`
+      prompt: generatedPrompt
     };
 
   } catch (error) {

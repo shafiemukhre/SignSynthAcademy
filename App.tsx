@@ -7,7 +7,7 @@ import { useProgress } from './hooks/useProgress';
 import { ALPHABET_LESSONS } from './constants';
 import { analyzeHandShape, generateReferenceImage, createLessonFromIntent } from './services/aiService';
 import { AppState, FeedbackResponse, Lesson } from './types';
-import { Brain, Trophy, Flame, Zap, Layout, BookOpen, Dumbbell, Settings, LogOut, Menu, Mic, MicOff, RefreshCw, Radio, Sparkles, Send, School } from 'lucide-react';
+import { Brain, Trophy, Flame, Zap, Layout, BookOpen, Dumbbell, Settings, LogOut, Menu, Mic, MicOff, RefreshCw, Radio, Sparkles, Send, School, Keyboard, ChevronLeft, ChevronRight, RotateCw } from 'lucide-react';
 
 // Polyfill for SpeechRecognition
 declare global {
@@ -29,10 +29,11 @@ const App: React.FC = () => {
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
-  // Classroom Auto/Voice State
+  // Classroom Auto/Voice/Input State
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
   const [lastSpokenCommand, setLastSpokenCommand] = useState<string | null>(null);
+  const [customSentence, setCustomSentence] = useState("");
 
   // Practice State
   const [practiceInput, setPracticeInput] = useState("");
@@ -55,7 +56,7 @@ const App: React.FC = () => {
   // --- CLASSROOM LOGIC ---
 
   // Load a specific lesson
-  const loadLesson = useCallback(async (lesson: Lesson) => {
+  const loadLesson = useCallback(async (lesson: Lesson, forceRefresh = false) => {
     setCurrentLesson(lesson);
     setAppState(AppState.GENERATING_REF);
     setFeedback(null);
@@ -118,10 +119,7 @@ const App: React.FC = () => {
     }
     
     if (lower.includes('previous lesson') || lower.includes('go back')) {
-      const currentIndex = lessonQueue.findIndex(l => l.id === currentLesson.id);
-      if (currentIndex > 0) {
-        loadLesson(lessonQueue[currentIndex - 1]);
-      }
+      handlePrevious();
       return;
     }
 
@@ -149,6 +147,40 @@ const App: React.FC = () => {
     if (imageSrc) {
       await performAnalysis(imageSrc, transcript);
     }
+  };
+
+  const handleSentenceSubmit = () => {
+    if (!customSentence.trim()) return;
+    
+    // Split by spaces to preserve words
+    const rawWords = customSentence.trim().split(/\s+/);
+    
+    const newLessons: Lesson[] = rawWords.map((rawWord, index) => {
+      const word = rawWord.replace(/[^A-Za-z]/g, '').toUpperCase(); // Clean punctuation
+      if (!word) return null; 
+      
+      const isWord = word.length > 1;
+      return {
+        id: `seq-${Date.now()}-${index}`,
+        target: word,
+        description: `Step ${index + 1} of ${rawWords.length}: Sign '${word}'`,
+        difficulty: isWord ? 'Intermediate' : 'Beginner',
+        // Word-for-word infographic generation vs Letter generation
+        prompt: isWord 
+          ? `educational infographic illustration of hands signing the word "${word}" in ASL, showing motion lines, arrows indicating movement, and facial expression if necessary, photorealistic style, white background`
+          : `photorealistic close-up of a hand signing ASL letter ${word}, neutral background, 4k`
+      };
+    }).filter(Boolean) as Lesson[];
+
+    if (newLessons.length === 0) return;
+
+    setLessonQueue(newLessons);
+    loadLesson(newLessons[0]);
+    setCustomSentence("");
+    setFeedback({
+      success: false,
+      message: `Queue updated! We will go word by word. First up: "${newLessons[0].target}"`
+    });
   };
 
   // --- PRACTICE LOGIC ---
@@ -237,10 +269,24 @@ const App: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [isAutoMode, appState, currentLesson, activeTab]);
 
+  // Navigation Handlers
   const handleNext = () => {
     const idx = lessonQueue.findIndex(l => l.id === currentLesson.id);
     const nextIndex = (idx + 1) % lessonQueue.length;
     loadLesson(lessonQueue[nextIndex]);
+  };
+
+  const handlePrevious = () => {
+    const idx = lessonQueue.findIndex(l => l.id === currentLesson.id);
+    const prevIndex = idx - 1;
+    if (prevIndex >= 0) {
+      loadLesson(lessonQueue[prevIndex]);
+    }
+  };
+
+  const handleRefreshImage = () => {
+    // Force reload of current lesson image
+    loadLesson(currentLesson, true);
   };
 
   const handleRetry = () => {
@@ -367,6 +413,24 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
+                {/* Sentence Input */}
+                <div className="flex gap-2 px-1">
+                  <input 
+                    className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:ring-1 focus:ring-violet-500 outline-none placeholder:text-slate-600"
+                    placeholder="Type a sentence (e.g. HELLO WORLD)..."
+                    value={customSentence}
+                    onChange={(e) => setCustomSentence(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSentenceSubmit()}
+                  />
+                  <button 
+                    onClick={handleSentenceSubmit}
+                    disabled={!customSentence.trim()}
+                    className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 p-2 rounded-lg transition-colors"
+                  >
+                    <Keyboard size={18} className="text-violet-400" />
+                  </button>
+                </div>
+
                 <div className="flex-1 relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-slate-800 min-h-[350px]">
                   <WebcamView 
                     ref={webcamRef}
@@ -391,12 +455,42 @@ const App: React.FC = () => {
               {/* Right: Output */}
               <div className="flex-1 flex flex-col gap-4 relative">
                  <div className="absolute -top-3 left-4 z-10 bg-slate-950 px-2 text-xs font-mono text-slate-500">NANO BANANA PRO REF</div>
-                 <div className="flex-1 relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-slate-800 min-h-[350px]">
+                 <div className="flex-1 relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-slate-800 min-h-[350px] group/canvas">
                    <GenerativeCanvas 
                      imageUrl={refImage} 
                      isGenerating={appState === AppState.GENERATING_REF}
+                     isSuccess={appState === AppState.SUCCESS}
                      promptText={currentLesson.prompt} 
                    />
+
+                   {/* NAVIGATION CONTROLS */}
+                   <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none z-20">
+                      <button 
+                        onClick={handlePrevious}
+                        disabled={lessonQueue.findIndex(l => l.id === currentLesson.id) === 0}
+                        className="pointer-events-auto p-3 bg-black/40 hover:bg-black/80 text-white rounded-full disabled:opacity-0 transition-all backdrop-blur-md"
+                      >
+                         <ChevronLeft size={24} />
+                      </button>
+
+                      <button 
+                        onClick={handleNext}
+                        className="pointer-events-auto p-3 bg-black/40 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-md"
+                      >
+                         <ChevronRight size={24} />
+                      </button>
+                   </div>
+
+                   {/* REFRESH BUTTON */}
+                   <div className="absolute top-14 right-4 z-20">
+                      <button 
+                        onClick={handleRefreshImage}
+                        title="Regenerate Image"
+                        className="bg-slate-900/80 hover:bg-slate-800 text-slate-300 p-2 rounded-lg backdrop-blur-md border border-slate-700 transition-all hover:text-white"
+                      >
+                         <RotateCw size={16} />
+                      </button>
+                   </div>
                  </div>
 
                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg shrink-0">
