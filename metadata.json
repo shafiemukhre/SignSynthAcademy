@@ -1,0 +1,8 @@
+{
+  "name": "SignSynth Academy",
+  "description": "An AI-powered ASL tutor using Gemini Teacher Engine and Nano Banana Pro visuals.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
